@@ -1,0 +1,118 @@
+name: Build
+on:
+  push:
+      branches:
+      - 'main'
+      tags:
+      - '!v[0-9].*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'LLVM version tag'  
+
+  workflow_call:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build LLVM
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+          os: [ubuntu-22.04, macos-12, windows-2022]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: 'llvm/llvm-project'
+          ref: 'release/14.x'
+          fetch-depth: '1'
+      - name: Setup MS Build
+        if: startsWith(matrix.os, 'windows')
+        uses: microsoft/setup-msbuild@v1.1
+      - name: Install Ninja
+        run: |
+          osName="$(uname -s)"
+          case "${osName}" in
+              Linux*)     sudo apt install ninja-build;;
+              Darwin*)    brew install ninja;;
+              MINGW*)     echo "No Ninja requirement for Windows";;
+              *)          echo "Do not recognise ${osName}." && exit 1
+          esac
+          echo "-- $os --"
+          case "${os}" in
+              ubuntu*)    echo "OS is Ubuntu ($os)";;
+              macos*)     echo "OS is MacOS ($os)";;
+              windows*)   echo "OS is Windows ($os)";;
+              *)          echo "Unrecognised OS ($os)."
+          esac
+        env:
+          os: ${{ matrix.os }}
+          HOMEBREW_NO_ENV_HINTS: true
+      - name: Configure Build
+        run: |
+          mkdir release
+          mkdir build
+          cd build
+          platform=""
+          case "${os}" in
+              ubuntu*)    platform="-G Ninja -DLLVM_PARALLEL_LINK_JOBS=2";;
+              macos*)     platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_PARALLEL_LINK_JOBS=2";;
+              windows*)   platform="-Thost=x64 -A x64 -DLLVM_USE_CRT_RELEASE=MT";;
+              *)          echo "Unrecognised OS '$os'."
+          esac
+          osName="$(uname -s)"
+          case "${osName}" in
+              Linux*)     latform="-G Ninja -DLLVM_PARALLEL_LINK_JOBS=2";;
+              Darwin*)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_PARALLEL_LINK_JOBS=2";;
+              MINGW*)     platform="-Thost=x64 -A x64 -DLLVM_USE_CRT_RELEASE=MT";;
+              *)          echo "Do not recognise ${osName}." && exit 1
+          esac
+          cmake .. $platform \
+            -DCMAKE_INSTALL_PREFIX=../release \
+            -DCMAKE_PREFIX_PATH=../release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_LINK_LLVM_DYLIB=ON \
+            -DLLVM_OPTIMIZED_TABLEGEN=ON
+        env:
+          os: ${{ matrix.os }}
+        working-directory: llvm
+      - name: Windows
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          msbuild /m -p:Configuration=Release INSTALL.vcxproj
+        working-directory: llvm/build
+      - name: Posix
+        if: |
+          startsWith(matrix.os, 'macos') ||
+          startsWith(matrix.os, 'ubuntu')
+        run: |
+          ninja install
+        env:
+          os: ${{ matrix.os }}
+        working-directory: llvm/build
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: LLVM-${{ matrix.os }}
+          path: |
+            llvm/release
+          if-no-files-found: error
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release on GitHub
+        uses: softprops/action-gh-release@v0.1.14
+        with:
+          name: LLVM
+          files: |
+            artifacts/*.*
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
