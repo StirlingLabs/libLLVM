@@ -1,22 +1,45 @@
 name: Build
 on:
   push:
-      branches:
-      - 'main'
-      tags:
-      - '!v[0-9].*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'LLVM version tag'  
-
-  workflow_call:
+    tags:
+      - 'v[0-9]+.*'
 
 defaults:
   run:
     shell: bash
 
 jobs:
+  version:
+    name: Check Version
+    runs-on: ubuntu-latest
+    outputs:
+      long: ${{ steps.good.outputs.long }}
+      short: ${{ steps.good.outputs.short }}
+    steps:
+      - name: Good Version
+        id: good
+        if: |
+            github.ref_type == 'tag' &&
+            startsWith(github.ref_name, 'v')
+        run: |
+          if [[ ${version:1:2} =~ ^-?[0-9]+$ ]]; then
+            echo "::set-output name=long::${version:1}"
+            echo "::set-output name=short::${version:1:2}"
+          else
+            echo "LLVM version ${version:1:2}, derived from -- $version -- is not numeric."
+            exit 1
+          fi
+        env:
+          version: ${{ github.ref_name }}
+      - name: Bad Version
+        id: bad
+        if: |
+            github.ref_type != 'tag' ||
+            !startsWith(github.ref_name, 'v')
+        run: |
+          echo "The build script expects tag to be in the format v14.0.6"
+          exit 1
+
   build:
     name: Build LLVM
     runs-on: ${{ matrix.os }}
@@ -24,40 +47,40 @@ jobs:
       matrix:
           os: [ubuntu-22.04, macos-12, windows-2022]
       fail-fast: false
+    needs: version
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v3
         with:
           repository: 'llvm/llvm-project'
-          ref: 'release/14.x'
-          fetch-depth: '1'
+          ref: 'release/${{ needs.version.outputs.short }}.x'
       - name: Setup MS Build
         if: startsWith(matrix.os, 'windows')
         uses: microsoft/setup-msbuild@v1.1
       - name: Install Ninja
         run: |
-          osName="$(uname -s)"
-          case "${osName}" in
-              Linux*)     sudo apt install ninja-build;;
-              Darwin*)    brew install ninja;;
-              MINGW*)     echo "No Ninja requirement for Windows";;
-              *)          echo "Do not recognise ${osName}." && exit 1
+          case "${RUNNER_OS}" in
+              Linux)    sudo apt install ninja-build;;
+              macOS)    brew install ninja;;
+              Windows)  echo "No Ninja requirement for Windows";;
+              *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
         env:
           os: ${{ matrix.os }}
           HOMEBREW_NO_ENV_HINTS: true
       - name: Configure Build
-
         run: |
           mkdir release
           mkdir build
           cd build
           platform=""
-          osName="$(uname -s)"
-          case "${osName}" in
-              Linux*)     platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              Darwin*)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              MINGW*)     platform="-Thost=x64 -A x64";;
-              *)          echo "Do not recognise ${osName}." && exit 1
+          case "${RUNNER_OS}" in
+              Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
+              macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
+              Windows)  platform="-Thost=x64 -A x64";;
+              *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
           cmake .. $platform \
             -DCMAKE_INSTALL_PREFIX=../release \
@@ -67,8 +90,6 @@ jobs:
             -DLLVM_OPTIMIZED_TABLEGEN=ON \
             -DLLVM_INCLUDE_TESTS=OFF \
             -DLLVM_INCLUDE_BENCHMARKS=OFF
-        env:
-          os: ${{ matrix.os }}
         working-directory: llvm
       - name: Windows
         if: startsWith(matrix.os, 'windows')
@@ -85,24 +106,105 @@ jobs:
         env:
           os: ${{ matrix.os }}
         working-directory: llvm/build
+      - name: Collect Files
+        run: |
+          dir=LLVM-$short
+          mkdir $dir
+          case "${RUNNER_OS}" in
+              Linux)    cp $release/lib/libLLVM-$short.so $dir/;;
+              macOS)    cp $release/lib/libLLVM.dylib $dir/libLLVM-$short.dylib;;
+              Windows)  cp $release/bin/LLVM-C.dll $dir/LLVM-$short.dll;;
+              *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
+          esac
+          ls -la
+        env:
+          short: ${{ needs.version.outputs.short }}
+          release: 'llvm/release'
+      - name: Split Mac Universal Binary for NuPkg
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          mkdir arm64
+          mkdir x64
+          lipo libLLVM-$short.dylib -thin arm64 -output arm64/libLLVM-$short.dylib
+          lipo libLLVM-$short.dylib -thin x86_64 -output x64/libLLVM-$short.dylib
+          ls -la
+        env:
+          short: ${{ needs.version.outputs.short }}
+        working-directory: LLVM-${{ needs.version.outputs.short }}
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
           name: LLVM-${{ matrix.os }}
           path: |
-            llvm/release
+            LLVM-${{ needs.version.outputs.short }}/**
           if-no-files-found: error
 
   create-release:
     name: Create Release
-    needs: build
+    needs: [ version, build ]
     runs-on: ubuntu-latest
     steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+      - name: Compress Files
+        run: |
+          ls -la
+          upx libLLVM-$short.so
+          echo "UPX on Mac requires amd64 architecture (we use x88_64 & arm64)"
+          upx LLVM-$short.dll
+          ls -la
+        env:
+          short: ${{ needs.version.outputs.short }}
+      - name: Create NuSpec
+        run: |
+          text='<?xml version="1.0" encoding="utf-8"?>'
+          text='$text<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">'
+          text='$text <metadata>'
+          text='$text  <id>StirlingLabs.Utilities.LLVM</id>'
+          text='$text  <version>$long</version>'
+          text='$text  <title>libLLVM</title>'
+          text='$text  <description>LLVM is a toolchain that can be used to develop a front end for any programming language.  This package contains the LLVM library for convenient cross-platform use in .Net.</description>'
+          text='$text  <authors>LLVM Team, packaged by Stirling Labs</authors>'
+          text='$text  <projectUrl>https://github.com/StirlingLabs/libLLVM</projectUrl>'
+          text='$text  <readme>docs/README.md</readme>'
+          text='$text  <icon>images/icon.png</icon>'
+          text='$text  <tags>LLVM library codegen SL</tags>'
+          text='$text  <license type="expression">Apache-2.0 with LLVM-exception</license>'
+          text='$text  <requireLicenseAcceptance>true</requireLicenseAcceptance>'
+          text='$text  <repository type="git" url="https://github.com/StirlingLabs/libLLVM.git" branch="main" commit="$commit" />'
+          text='$text </metadata>'
+          text='$text <files>'
+          text='$text  <file src="../README.md" target="docs/" />'
+          text='$text  <file src="../icon.png" target="images/" />'
+          text='$text  <file src="libLLVM-$short.so" target="runtimes/linux-x64/native/" />'
+          text='$text  <file src="x64/libLLVM-$short.dylib" target="runtimes/osx-x64/native/" />'
+          text='$text  <file src="arm64/libLLVM-$short.dylib" target="runtimes/osx-arm64/native/" />'
+          text='$text  <file src="LLVM-$short.dll" target="runtimes/win10-x64/native/" />'
+          text='$text </files>'
+          text='$text</package>'
+          echo $text > libLLVM-$short.nuspec
+          cat libLLVM-$short.nuspec
+        env:
+          commit: ${{ github.sha }}
+          long: ${{ needs.version.outputs.long }}
+          short: ${{ needs.version.outputs.short }}
+      - name: Package Files
+        run: |
+          nuget pack libLLVM-$short.nuspec
+          ls -la
+        env:
+          short: ${{ needs.version.outputs.short }}
+      - name: Upload NuPkg to GitHub 
+        run: |
+          dotnet nuget push *.nupkg -k ${{github.token}} -s https://nuget.pkg.github.com/${{github.repository_owner}}/index.json --no-symbols --skip-duplicate || true
       - name: Create release on GitHub
         uses: softprops/action-gh-release@v0.1.14
         with:
-          name: LLVM
+          name: libLLVM ${{ needs.version.outputs.long }}
           files: |
-            artifacts/*.*
+            libLLVM-$short.so
+            libLLVM-$short.dylib
+            LLVM-$short.dll
         env:
+          short: ${{ needs.version.outputs.short }}
           GITHUB_TOKEN: ${{ github.token }}
