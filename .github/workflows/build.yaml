@@ -67,6 +67,11 @@ jobs:
       - name: Setup MS Build
         if: startsWith(matrix.os, 'windows')
         uses: microsoft/setup-msbuild@v1.1
+      - name: Find snmalloc
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          ls -la
+          ls -laR snmalloc
       - name: Install Dependencies
         run: |
           case "${RUNNER_OS}" in
@@ -84,10 +89,14 @@ jobs:
           mkdir build
           cd build
           platform=""
+          winBin="C:/Program\ Files/LLVM/bin"
+          #toolchain="-TClangCL,host=x64 -A x64 -DCMAKE_C_COMPILER=\"${winBin}/clang-cl.exe\" -DCMAKE_CXX_COMPILER=\"${winBin}/clang-cl.exe\" -DCMAKE_LINKER=\"${winBin}/lld-link.exe\" -DCMAKE_RANLIB=\"${winBin}/llvm-ranlib.exe\" -DCMAKE_AR=\"${winBin}/llvm-ar.exe\""
+          toolchain="-TClangCL,host=x64 -A x64"
+          echo $toolchain
           case "${RUNNER_OS}" in
               Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCMAKE_RANLIB=/usr/bin/llvm-ranlib -DCMAKE_AR=/usr/bin/llvm-ar";;
               macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              Windows)  platform="-Thost=x64 -TClangCL -A x64 -DLLVM_USE_CRT_RELEASE=MT -DLLVM_INTEGRATED_CRT_ALLOC=../../snmalloc";;
+              Windows)  platform="-DLLVM_USE_CRT_RELEASE=MT -DLLVM_INTEGRATED_CRT_ALLOC=../../snmalloc ${toolchain}";;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
           echo Platform-specific arguments: $platform
