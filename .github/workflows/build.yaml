@@ -76,10 +76,11 @@ jobs:
           mkdir build
           cd build
           platform=""
+          winBin="C:\Program Files\LLVM\bin"
           case "${RUNNER_OS}" in
               Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
               macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              Windows)  platform="-Thost=x64 -A x64";;
+              Windows)  platform='-Thost=x64 -A x64 "-DCMAKE_C_COMPILER=$winBin\clang-cl.exe" "-DCMAKE_CXX_COMPILER=$winBin\clang-cl.exe" "-DCMAKE_LINKER=$winBin\lld-link.exe" "-DCMAKE_RANLIB=$winBin\llvm-ranlib.exe" "-DCMAKE_AR=$winBin\llvm-ar.exe"';;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
           cmake .. $platform \
@@ -89,7 +90,8 @@ jobs:
             -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON \
             -DLLVM_OPTIMIZED_TABLEGEN=ON \
             -DLLVM_INCLUDE_TESTS=OFF \
-            -DLLVM_INCLUDE_BENCHMARKS=OFF
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            -DLLVM_ENABLE_LTO=Thin
         working-directory: llvm
       - name: Windows
         if: startsWith(matrix.os, 'windows')
@@ -155,6 +157,17 @@ jobs:
           ls -la
         env:
           short: ${{ needs.version.outputs.short }}
+      - name: Create release on GitHub
+        uses: softprops/action-gh-release@v0.1.14
+        with:
+          name: libLLVM ${{ needs.version.outputs.long }}
+          files: |
+            libLLVM-$short.so
+            libLLVM-$short.dylib
+            LLVM-$short.dll
+        env:
+          short: ${{ needs.version.outputs.short }}
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Create NuSpec
         run: |
           text='<?xml version="1.0" encoding="utf-8"?>'
@@ -197,14 +210,3 @@ jobs:
       - name: Upload NuPkg to GitHub 
         run: |
           dotnet nuget push *.nupkg -k ${{github.token}} -s https://nuget.pkg.github.com/${{github.repository_owner}}/index.json --no-symbols --skip-duplicate || true
-      - name: Create release on GitHub
-        uses: softprops/action-gh-release@v0.1.14
-        with:
-          name: libLLVM ${{ needs.version.outputs.long }}
-          files: |
-            libLLVM-$short.so
-            libLLVM-$short.dylib
-            LLVM-$short.dll
-        env:
-          short: ${{ needs.version.outputs.short }}
-          GITHUB_TOKEN: ${{ github.token }}
