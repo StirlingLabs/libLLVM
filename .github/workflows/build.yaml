@@ -84,13 +84,13 @@ jobs:
           mkdir build
           cd build
           platform=""
-          winBin="C:\Program Files\LLVM\bin"
           case "${RUNNER_OS}" in
               Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCMAKE_RANLIB=/usr/bin/llvm-ranlib -DCMAKE_AR=/usr/bin/llvm-ar";;
               macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              Windows)  platform="-Thost=x64 -A x64 -DLLVM_USE_CRT_RELEASE=MT -DLLVM_INTEGRATED_CRT_ALLOC=../../snmalloc \"-DCMAKE_C_COMPILER=$winBin\clang-cl.exe\" \"-DCMAKE_CXX_COMPILER=$winBin\clang-cl.exe\" \"-DCMAKE_LINKER=$winBin\lld-link.exe\" \"-DCMAKE_RANLIB=$winBin\llvm-ranlib.exe\" \"-DCMAKE_AR=$winBin\llvm-ar.exe\"";;
+              Windows)  platform="-Thost=x64 -TClangCL -A x64 -DLLVM_USE_CRT_RELEASE=MT -DLLVM_INTEGRATED_CRT_ALLOC=../../snmalloc";;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
+          echo Platform-specific arguments: $platform
           cmake .. $platform \
             -DCMAKE_INSTALL_PREFIX=../release \
             -DCMAKE_PREFIX_PATH=../release \
