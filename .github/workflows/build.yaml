@@ -52,19 +52,27 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout LLVM
+        uses: actions/checkout@v3
         with:
           repository: 'llvm/llvm-project'
           ref: 'release/${{ needs.version.outputs.short }}.x'
+      - name: Checkout snmalloc
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/checkout@v3
+        with:
+          repository: 'microsoft/snmalloc'
+          ref: '0.6.0'
+          path: 'snmalloc'
       - name: Setup MS Build
         if: startsWith(matrix.os, 'windows')
         uses: microsoft/setup-msbuild@v1.1
-      - name: Install Ninja
+      - name: Install Dependencies
         run: |
           case "${RUNNER_OS}" in
-              Linux)    sudo apt install ninja-build;;
+              Linux)    sudo apt install ninja-build llvm;;
               macOS)    brew install ninja;;
-              Windows)  echo "No Ninja requirement for Windows";;
+              Windows)  echo "No need for Ninja on Win" ;;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
         env:
@@ -78,9 +86,9 @@ jobs:
           platform=""
           winBin="C:\Program Files\LLVM\bin"
           case "${RUNNER_OS}" in
-              Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
+              Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCMAKE_RANLIB=/usr/bin/llvm-ranlib -DCMAKE_AR=/usr/bin/llvm-ar";;
               macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              Windows)  platform='-Thost=x64 -A x64 "-DCMAKE_C_COMPILER=$winBin\clang-cl.exe" "-DCMAKE_CXX_COMPILER=$winBin\clang-cl.exe" "-DCMAKE_LINKER=$winBin\lld-link.exe" "-DCMAKE_RANLIB=$winBin\llvm-ranlib.exe" "-DCMAKE_AR=$winBin\llvm-ar.exe"';;
+              Windows)  platform="-Thost=x64 -A x64 -DLLVM_USE_CRT_RELEASE=MT -DLLVM_INTEGRATED_CRT_ALLOC=../../snmalloc \"-DCMAKE_C_COMPILER=$winBin\clang-cl.exe\" \"-DCMAKE_CXX_COMPILER=$winBin\clang-cl.exe\" \"-DCMAKE_LINKER=$winBin\lld-link.exe\" \"-DCMAKE_RANLIB=$winBin\llvm-ranlib.exe\" \"-DCMAKE_AR=$winBin\llvm-ar.exe\"";;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
           cmake .. $platform \
@@ -91,7 +99,10 @@ jobs:
             -DLLVM_OPTIMIZED_TABLEGEN=ON \
             -DLLVM_INCLUDE_TESTS=OFF \
             -DLLVM_INCLUDE_BENCHMARKS=OFF \
-            -DLLVM_ENABLE_LTO=Thin
+            -DLLVM_STATIC_LINK_CXX_STDLIB=ON \
+            -DLLVM_ENABLE_LTO=Thin \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DLLVM_ENABLE_EH=ON 
         working-directory: llvm
       - name: Windows
         if: startsWith(matrix.os, 'windows')
@@ -123,7 +134,7 @@ jobs:
           short: ${{ needs.version.outputs.short }}
           release: 'llvm/release'
       - name: Split Mac Universal Binary for NuPkg
-        if: startsWith(matrix.os, 'macos')
+        if: false && startsWith(matrix.os, 'macos')
         run: |
           mkdir arm64
           mkdir x64
@@ -148,9 +159,17 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
+      - name: Collect Files
+        run: |
+          ls -laR
+          mv */libLLVM-$short.so .
+          mv */libLLVM-$short.dylib .
+          mv */LLVM-$short.dll .
+          ls -la
+        env:
+          short: ${{ needs.version.outputs.short }}
       - name: Compress Files
         run: |
-          ls -la
           upx libLLVM-$short.so
           echo "UPX on Mac requires amd64 architecture (we use x88_64 & arm64)"
           upx LLVM-$short.dll
@@ -190,8 +209,7 @@ jobs:
           text='$text  <file src="../README.md" target="docs/" />'
           text='$text  <file src="../icon.png" target="images/" />'
           text='$text  <file src="libLLVM-$short.so" target="runtimes/linux-x64/native/" />'
-          text='$text  <file src="x64/libLLVM-$short.dylib" target="runtimes/osx-x64/native/" />'
-          text='$text  <file src="arm64/libLLVM-$short.dylib" target="runtimes/osx-arm64/native/" />'
+          text='$text  <file src="libLLVM-$short.dylib" target="runtimes/osx/native/" />'
           text='$text  <file src="LLVM-$short.dll" target="runtimes/win10-x64/native/" />'
           text='$text </files>'
           text='$text</package>'
