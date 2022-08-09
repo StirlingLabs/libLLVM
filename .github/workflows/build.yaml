@@ -57,17 +57,17 @@ jobs:
         with:
           repository: 'llvm/llvm-project'
           ref: 'release/${{ needs.version.outputs.short }}.x'
-      - name: Checkout snmalloc
-        if: startsWith(matrix.os, 'windows')
-        uses: actions/checkout@v3
-        with:
-          repository: 'microsoft/snmalloc'
-          ref: '0.6.0'
-          path: 'snmalloc'
-      - name: Checkout patches
-        uses: actions/checkout@v3
-        with:
-          path: 'local'
+#      - name: Checkout snmalloc
+#        if: startsWith(matrix.os, 'windows')
+#        uses: actions/checkout@v3
+#        with:
+#          repository: 'microsoft/snmalloc'
+#          ref: '0.6.0'
+#          path: 'snmalloc'
+#      - name: Checkout patches
+#        uses: actions/checkout@v3
+#        with:
+#          path: 'local'
       - name: Apply patches
         run: |
           find local/patches -type f -name '*.patch' -exec patch -f -u -p0 -i {} \;
@@ -92,15 +92,16 @@ jobs:
           cd build
           platform=""
           winBin="C:/Program\ Files/LLVM/bin"
-          #toolchain="-TClangCL,host=x64 -A x64 -DCMAKE_C_COMPILER=\"${winBin}/clang-cl.exe\" -DCMAKE_CXX_COMPILER=\"${winBin}/clang-cl.exe\" -DCMAKE_LINKER=\"${winBin}/lld-link.exe\" -DCMAKE_RANLIB=\"${winBin}/llvm-ranlib.exe\" -DCMAKE_AR=\"${winBin}/llvm-ar.exe\""
+#          toolchain="-TClangCL,host=x64 -A x64 -DCMAKE_C_COMPILER=\"${winBin}/clang-cl.exe\" -DCMAKE_CXX_COMPILER=\"${winBin}/clang-cl.exe\" -DCMAKE_LINKER=\"${winBin}/lld-link.exe\" -DCMAKE_RANLIB=\"${winBin}/llvm-ranlib.exe\" -DCMAKE_AR=\"${winBin}/llvm-ar.exe\""
           toolchain="-TClangCL,host=x64 -A x64"
           echo $toolchain
           case "${RUNNER_OS}" in
               Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCMAKE_RANLIB=/usr/bin/llvm-ranlib -DCMAKE_AR=/usr/bin/llvm-ar";;
               macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              Windows)  platform="-DLLVM_USE_CRT_RELEASE=MT -DLLVM_INTEGRATED_CRT_ALLOC=../../snmalloc ${toolchain}";;
+              Windows)  platform="-DLLVM_USE_CRT_RELEASE=MT ${toolchain}";;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
+#              Windows)  platform="-DLLVM_USE_CRT_RELEASE=MT -DLLVM_INTEGRATED_CRT_ALLOC=../../snmalloc ${toolchain}";;
           echo Platform-specific arguments: $platform
           cmake .. $platform \
             -DCMAKE_INSTALL_PREFIX=../release \
