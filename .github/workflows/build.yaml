@@ -64,14 +64,16 @@ jobs:
           repository: 'microsoft/snmalloc'
           ref: '0.6.0'
           path: 'snmalloc'
+      - name: Checkout patches
+        uses: actions/checkout@v3
+        with:
+          path: 'local'
+      - name: Apply patches
+        run: |
+          find local/patches -type f -name '*.patch' -exec patch -f -u -p0 -i {} \;
       - name: Setup MS Build
         if: startsWith(matrix.os, 'windows')
         uses: microsoft/setup-msbuild@v1.1
-      - name: Find snmalloc
-        if: startsWith(matrix.os, 'windows')
-        run: |
-          ls -la
-          ls -laR snmalloc
       - name: Install Dependencies
         run: |
           case "${RUNNER_OS}" in
@@ -149,7 +151,6 @@ jobs:
           mkdir x64
           lipo libLLVM-$short.dylib -thin arm64 -output arm64/libLLVM-$short.dylib
           lipo libLLVM-$short.dylib -thin x86_64 -output x64/libLLVM-$short.dylib
-          ls -la
         env:
           short: ${{ needs.version.outputs.short }}
         working-directory: LLVM-${{ needs.version.outputs.short }}
@@ -174,7 +175,6 @@ jobs:
           mv */libLLVM-$short.so .
           mv */libLLVM-$short.dylib .
           mv */LLVM-$short.dll .
-          ls -la
         env:
           short: ${{ needs.version.outputs.short }}
       - name: Compress Files
