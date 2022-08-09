@@ -111,9 +111,9 @@ jobs:
           dir=LLVM-$short
           mkdir $dir
           case "${RUNNER_OS}" in
-              Linux)    cp $release/lib/libLLVM-$short.so $dir/;;
-              macOS)    cp $release/lib/libLLVM.dylib $dir/libLLVM-$short.dylib;;
-              Windows)  cp $release/bin/LLVM-C.dll $dir/LLVM-$short.dll;;
+              Linux)    mv $release/lib/libLLVM-$short.so $dir/;;
+              macOS)    mv $release/lib/libLLVM.dylib $dir/libLLVM-$short.dylib;;
+              Windows)  mv $release/bin/LLVM-C.dll $dir/LLVM-$short.dll;;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
           esac
           ls -la
@@ -121,7 +121,7 @@ jobs:
           short: ${{ needs.version.outputs.short }}
           release: 'llvm/release'
       - name: Split Mac Universal Binary for NuPkg
-        if: startsWith(matrix.os, 'macos')
+        if: false && startsWith(matrix.os, 'macos')
         run: |
           mkdir arm64
           mkdir x64
@@ -146,6 +146,18 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
+      - name: Collect Files
+        run: |
+          ls -la
+          mv */libLLVM-$short.so .
+          mv */libLLVM-$short.dylib .
+          mv */LLVM-$short.dll .
+          chmod +x libLLVM-$short.so
+          chmod +x libLLVM-$short.dylib
+          chmod +x LLVM-$short.dll
+          ls -la
+        env:
+          short: ${{ needs.version.outputs.short }}
       - name: Compress Files
         run: |
           ls -la
@@ -177,8 +189,7 @@ jobs:
           text='$text  <file src="../README.md" target="docs/" />'
           text='$text  <file src="../icon.png" target="images/" />'
           text='$text  <file src="libLLVM-$short.so" target="runtimes/linux-x64/native/" />'
-          text='$text  <file src="x64/libLLVM-$short.dylib" target="runtimes/osx-x64/native/" />'
-          text='$text  <file src="arm64/libLLVM-$short.dylib" target="runtimes/osx-arm64/native/" />'
+          text='$text  <file src="libLLVM-$short.dylib" target="runtimes/osx/native/" />'
           text='$text  <file src="LLVM-$short.dll" target="runtimes/win10-x64/native/" />'
           text='$text </files>'
           text='$text</package>'
