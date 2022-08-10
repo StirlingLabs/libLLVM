@@ -51,27 +51,25 @@ jobs:
           include:
           - os: ubuntu-22.04
             finalName:  ${{ needs.version.outputs.linuxName }}
-            dependencies: 'sudo apt install ninja-build upx-ucl'
-            builtAs: llvm/release/lib/libLLVM-$short.so
+            builtAs: llvm/build/_install/lib/libLLVM-${{ needs.version.outputs.short }}.so
           - os: macos-12
             finalName:  ${{ needs.version.outputs.macName }}
-            dependencies: 'brew install ninja upx'
-            builtAs: llvm/release/lib/libLLVM.dylib
+            builtAs: llvm/build/_install/lib/libLLVM.dylib
           - os: windows-2022
             finalName:  ${{ needs.version.outputs.winName }}
-            dependencies: 'echo "No Ninja requirement for Windows but need to install UPX"'
-            builtAs: llvm/release/bin/LLVM-C.dll
+            builtAs: llvm/build/_install/bin/LLVM-C.dll
       fail-fast: false
     needs: version
     env: 
       workingDir: llvm/build
-      builtDir: llvm/release
+      builtDir: llvm/build/_install
       finalDir: libLLVM-${{ needs.version.outputs.short }}
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout LLVM
+        uses: actions/checkout@v3
         with:
           repository: 'llvm/llvm-project'
           ref: 'release/${{ needs.version.outputs.short }}.x'
@@ -79,29 +77,35 @@ jobs:
         if: runner.os == 'Windows'
         uses: microsoft/setup-msbuild@v1.1
       - name: Install Dependencies
-        run: $deps
+        run: |
+          case "${RUNNER_OS}" in
+              Linux)    sudo apt install ninja-build ;;
+              macOS)    brew install ninja ;;
+              Windows)  echo "No Ninja requirement for Windows" ;;
+              *)        echo "Do not recognise ${RUNNER_OS}." && exit 1 ;;
+          esac
         env:
-          deps: ${{ matrix.dependencies }}
           HOMEBREW_NO_ENV_HINTS: true
       - name: Configure Build
         run: |
-          mkdir $builtDir
           mkdir $workingDir && cd $workingDir
-          platform=""
           case "${RUNNER_OS}" in
-              Linux)    platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON";;
-              Windows)  platform="-Thost=x64 -A x64";;
-              *)        echo "Do not recognise ${RUNNER_OS}." && exit 1
+              Linux)    bin="/usr/bin" ;
+                        tools="-DCMAKE_C_COMPILER=$bin/clang -DCMAKE_CXX_COMPILER=$bin/clang++ -DCMAKE_LINKER=$bin/ld.lld -DCMAKE_RANLIB=$bin/ranlib -DCMAKE_AR=$bin/ar" ;
+                        platform="-G Ninja -DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_LTO=Thin ${tools}" ;;
+              macOS)    platform="-DCMAKE_OSX_ARCHITECTURES='x86_64;arm64' -G Ninja -DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_LTO=Thin" ;;
+              Windows)  bin="C:/Progra~1/LLVM/bin" ;
+                        tools="-DCMAKE_C_COMPILER=$bin/clang-cl.exe -DCMAKE_CXX_COMPILER=$bin/clang-cl.exe -DCMAKE_LINKER=$bin/lld-link.exe -DCMAKE_RANLIB=$bin/llvm-ranlib.exe -DCMAKE_AR=$bin/llvm-ar.exe" ;
+                        platform="-TClangCL -A x64 -DLLVM_BUILD_LLVM_C_DYLIB=ON -DLLVM_USE_CRT_RELEASE=MT -DLLVM_STATIC_LINK_CXX_STDLIB=ON ${tools}" ;;
+              *)        echo "Do not recognise ${RUNNER_OS}." && exit 1 ;;
           esac
-          cmake .. $platform \
-            -DCMAKE_INSTALL_PREFIX=../release \
-            -DCMAKE_PREFIX_PATH=../release \
+          cmake .. \
+            -DCMAKE_INSTALL_PREFIX=_install \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON \
-            -DLLVM_OPTIMIZED_TABLEGEN=ON \
             -DLLVM_INCLUDE_TESTS=OFF \
-            -DLLVM_INCLUDE_BENCHMARKS=OFF
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            $platform
       - name: Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -114,29 +118,40 @@ jobs:
           runner.os == 'Linux'
         run: |
           ninja install
-        env:
-          os: ${{ matrix.os }}
         working-directory: ${{ env.workingDir }}
+      - name: Look for LLVM-C.DLL
+        if: runner.os == 'Windows'
+        run: |
+          find . -name 'LLVM-c.dll'
+      - name: Upload Uncompressed Binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: LLVM-${{ runner.os }}-LTO
+          path: ${{ matrix.builtAs }}
+          if-no-files-found: error
       - name: Collect Files
         run: |
-          mkdir $resultDir
+          mkdir $finalDir
           mv $builtAs $finalDir/$finalName
+          if [[ "${RUNNER_OS}" == "Linux" ]] ; then
+            chmod +x $finalDir/$finalName
+          fi
           ls -la $finalDir
         env:
           builtAs: ${{ matrix.builtAs }}
-          finaltName: ${{ matrix.finaltName }}
+          finalName: ${{ matrix.finalName }}
       - name: (skip) Split Mac Universal Binary for UPX
         if: false && runner.os == 'macOS'
         run: |
           mkdir arm64
           mkdir x64
-          lipo $finaltName -thin arm64 -output arm64/$finaltName
-          lipo $finaltName -thin x86_64 -output x64/$finaltName
+          lipo $finalName -thin arm64 -output arm64/$finalName
+          lipo $finalName -thin x86_64 -output x64/$finalName
           ls -la
         env:
-          finaltName: ${{ matrix.finaltName }}
+          finalName: ${{ matrix.finalName }}
         working-directory: ${{ env.finalDir }}
-      - name: Compress binaries
+      - name: Compress Binaries
         uses: svenstaro/upx-action@v2
         if: runner.os != 'macOS'
         with:
@@ -160,43 +175,45 @@ jobs:
     needs: [ version, build ]
     runs-on: ubuntu-latest
     env:
-      linuxName: Linux/${{ needs.version.outputs.linuxName }}
-      macName: macOS/${{ needs.version.outputs.macName }}
-      winName: Windows/${{ needs.version.outputs.winName }}
+      linuxName: LLVM-Linux/${{ needs.version.outputs.linuxName }}
+      macName: LLVM-macOS/${{ needs.version.outputs.macName }}
+      winName: LLVM-Windows/${{ needs.version.outputs.winName }}
     steps:
-      - name: Download all artifacts
+      - name: Checkout Resources
+        uses: actions/checkout@v3
+      - name: Download Artifacts
         uses: actions/download-artifact@v3
       - name: Create NuSpec
         run: |
           text="<?xml version=\"1.0\" encoding=\"utf-8\"?>"
           text="$text\n<package xmlns=\"http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd\">"
           text="$text\n <metadata>"
-          text="$text\n  <id>StirlingLabs.Utilities.libLLVM</id>"
+          text="$text\n  <id>StirlingLabs.libLLVM</id>"
           text="$text\n  <version>$long</version>"
-          text="$text\n  <title>libLLVM</title>"
+          text="$text\n  <title>libLLVM ${{ needs.version.outputs.short }}</title>"
           text="$text\n  <description>"
-          text="$text\n    LLVM is a toolchain that can be used to develop a front end for any programming language.  
-          text="$text\n    This package contains LLVM libraries for convenient cross-platform use in .Net applications.
+          text="$text\n    LLVM is a toolchain that can be used to develop a front end for any programming language."
+          text="$text\n    This package provides LLVM libraries for convenient cross-platform use in .Net applications."
           text="$text\n  </description>"
           text="$text\n  <authors>LLVM Team, packaged by Stirling Labs</authors>"
           text="$text\n  <projectUrl>https://github.com/StirlingLabs/libLLVM</projectUrl>"
           text="$text\n  <readme>docs/README.md</readme>"
           text="$text\n  <icon>images/icon.png</icon>"
           text="$text\n  <tags>LLVM library codegen SL</tags>"
-          text="$text\n  <license type=\"expression\">Apache-2.0 with LLVM-exception</license>"
+          text="$text\n  <license type=\"expression\">Apache-2.0 WITH LLVM-exception</license>"
           text="$text\n  <requireLicenseAcceptance>true</requireLicenseAcceptance>"
           text="$text\n  <repository type=\"git\" url=\"https://github.com/StirlingLabs/libLLVM.git\" branch=\"main\" commit=\"$commit\" />"
           text="$text\n </metadata>"
           text="$text\n <files>"
-          text="$text\n  <file src=\"../README.md\" target=\"docs/\" />"
-          text="$text\n  <file src=\"../icon.png\" target=\"images/\" />"
+          text="$text\n  <file src=\"README.md\" target=\"docs/\" />"
+          text="$text\n  <file src=\"icon.png\" target=\"images/\" />"
           text="$text\n  <file src=\"$linuxName\" target=\"runtimes/linux-x64/native/\" />"
           text="$text\n  <file src=\"$macName\" target=\"runtimes/osx/native/\" />"
           text="$text\n  <file src=\"$winName\" target=\"runtimes/win10-x64/native/\" />"
           text="$text\n </files>"
           text="$text\n</package>"
-          echo $text > libLLVM.nuspec
-          cat libLLVM-$short.nuspec
+          echo -e $text > libLLVM.nuspec
+          cat libLLVM.nuspec
         env:
           commit: ${{ github.sha }}
           long: ${{ needs.version.outputs.long }}
