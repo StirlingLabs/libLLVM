@@ -209,7 +209,7 @@ jobs:
           text="$text\n  <file src=\"icon.png\" target=\"images/\" />"
           text="$text\n  <file src=\"$linuxName\" target=\"runtimes/linux-x64/native/\" />"
           text="$text\n  <file src=\"$macName\" target=\"runtimes/osx/native/\" />"
-          text="$text\n  <file src=\"$winName\" target=\"runtimes/win10-x64/native/\" />"
+          text="$text\n  <file src=\"$winName\" target=\"runtimes/win-x64/native/\" />"
           text="$text\n </files>"
           text="$text\n</package>"
           echo -e $text > libLLVM.nuspec
