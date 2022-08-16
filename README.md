@@ -1,11 +1,15 @@
 ![libLLVM](https://github.com/StirlingLabs/libLLVM/blob/main/libLLVM.jpg)
 
+[![Build](https://github.com/StirlingLabs/libLLVM/actions/workflows/build.yaml/badge.svg)](https://github.com/StirlingLabs/libLLVM/actions/workflows/build.yaml)
+
 The purpose of this repo is to use GitHub Actions to build [libLLVM](https://llvm.org) and make the following binaries available:
 
-- Windows x86-64
-- Linux x86-64
-- MacOS ARM64 & x86-64 (Universal Binary)
+- Windows x86-64 (static libstdc++, UPX minified)
+- Linux x86-64 (LTO thin, UPX minified)
+- MacOS ARM64 & x86-64 (LTO Thin, Universal Binary)
 
-Specifically for our fork of [StirlingLabs/LLVMSharp](https://github.com/StirlingLabs/LLVMSharp) but we also create NuPkgs here.
+This is done specifically for our fork of [StirlingLabs/LLVMSharp](https://github.com/StirlingLabs/LLVMSharp) but the NuPkg is also available at https://www.nuget.org/packages/StirlingLabs.libLLVM.
 
-To trigger a new build, create a new release with a tag in the format "v14.0.1"
+## Building
+
+To trigger a new build, create a new release with a tag in the format "v14.0.7.0" where the first 3 positions correspond to the release [LLVM](https://llvm.org).
