@@ -1,4 +1,4 @@
-![libLLVM](https://github.com/StirlingLabs/libLLVM/blob/main/libLLVM.jpg)
+![libLLVM](https://raw.githubusercontent.com/StirlingLabs/libLLVM/main/libLLVM.jpg)
 
 [![Build](https://github.com/StirlingLabs/libLLVM/actions/workflows/build.yaml/badge.svg)](https://github.com/StirlingLabs/libLLVM/actions/workflows/build.yaml)
 
