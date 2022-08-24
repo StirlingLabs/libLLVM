@@ -12,6 +12,7 @@ jobs:
   version:
     name: Check Version
     runs-on: ubuntu-latest
+    #runs-on: [ self-hosted, Linux ]
     outputs:
       long: ${{ steps.good.outputs.long }}
       short: ${{ steps.good.outputs.short }}
@@ -46,16 +47,20 @@ jobs:
   build:
     name: Build LLVM
     runs-on: ${{ matrix.os }}
+    #runs-on: ${{ matrix.sh }}
     strategy:
       matrix:
           include:
           - os: ubuntu-22.04
+            sh: [ self-hosted, Linux ]
             finalName:  ${{ needs.version.outputs.linuxName }}
             builtAs: llvm/build/_install/lib/libLLVM-${{ needs.version.outputs.short }}.so
           - os: macos-12
+            sh: [ self-hosted, macos ]
             finalName:  ${{ needs.version.outputs.macName }}
             builtAs: llvm/build/_install/lib/libLLVM.dylib
           - os: windows-2022
+            sh: [ self-hosted, windows ]
             finalName:  ${{ needs.version.outputs.winName }}
             builtAs: llvm/build/_install/bin/LLVM-C.dll
       fail-fast: false
@@ -84,7 +89,7 @@ jobs:
               Windows)  echo "No Ninja requirement for Windows" ;;
               *)        echo "Do not recognise ${RUNNER_OS}." && exit 1 ;;
           esac
-        env:
+        env: 
           HOMEBREW_NO_ENV_HINTS: true
       - name: Configure Build
         run: |
@@ -174,6 +179,8 @@ jobs:
     name: Create Release
     needs: [ version, build ]
     runs-on: ubuntu-latest
+    #runs-on: [ self-hosted, Linux ]
+    if: false
     env:
       linuxName: LLVM-Linux/${{ needs.version.outputs.linuxName }}
       macName: LLVM-macOS/${{ needs.version.outputs.macName }}

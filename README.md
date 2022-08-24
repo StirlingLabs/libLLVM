@@ -13,3 +13,4 @@ This is done specifically for our fork of [StirlingLabs/LLVMSharp](https://githu
 ## Building
 
 To trigger a new build, create a new release with a tag in the format "v14.0.7.0" where the first 3 positions correspond to the release [LLVM](https://llvm.org).
+

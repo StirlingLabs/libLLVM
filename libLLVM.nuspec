@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+ <metadata>
+  <id>StirlingLabs.libLLVM</id>
+  <version>14.0.6.3</version>
+  <title>libLLVM 14</title>
+  <description>
+    LLVM is a toolchain that can be used to develop a front end for any programming language.
+    This package provides LLVM libraries for convenient cross-platform use in .Net applications.
+  </description>
+  <authors>LLVM Team, packaged by Stirling Labs</authors>
+  <projectUrl>https://github.com/StirlingLabs/libLLVM</projectUrl>
+  <readme>docs/README.md</readme>
+  <icon>images/icon.png</icon>
+  <tags>LLVM library codegen SL</tags>
+  <license type="expression">Apache-2.0 WITH LLVM-exception</license>
+  <requireLicenseAcceptance>true</requireLicenseAcceptance>
+  <repository type="git" url="https://github.com/StirlingLabs/libLLVM.git" branch="main" commit="$commit" />
+ </metadata>
+ <files>
+  <file src="README.md" target="docs/" />
+  <file src="icon.png" target="images/" />
+  <file src="runtimes/linux-x64/native/libLLVM-14.so" target="runtimes/linux-x64/native/" />
+  <file src="runtimes/osx/native/libLLVM-14.dylib" target="runtimes/osx/native/" />
+  <file src="runtimes/win-x64/native/LLVM-14.dll" target="runtimes/win-x64/native/" />
+ </files>
+</package>
